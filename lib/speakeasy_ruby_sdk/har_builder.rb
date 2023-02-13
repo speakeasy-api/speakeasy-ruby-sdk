@@ -1,14 +1,18 @@
 module SpeakeasyRubySdk
-  module HarBuilder
+  class HarBuilder
 
-    def self.construct_creator name, version
+    def initialize api_config
+      @api_config = api_config
+    end
+
+    def construct_creator name, version
       return {
         "name": name,
         "version": version
       }
     end
 
-    def self.construct_log version, creator, entries, comment
+    def construct_log version, creator, entries, comment
       return {
         'log': {
           "version": version,
@@ -20,143 +24,211 @@ module SpeakeasyRubySdk
     end
 
 
-    def self.construct_empty_cache
+    def construct_empty_cache
       return {
       }
     end
-    def self.construct_empty_params
+    def construct_empty_params
       return []
     end
 
-    def self.construct_query_records query_params
+    def construct_query_records query_params
       query_params.map {|k, v| {
         "name": k,
         "value": v
       } }.sort_by(&lambda{ |h| h[:name] })
     end
 
-    def self.construct_response_cookies cookies
-      if cookies.present?
-        return cookies.map{ |cookie|
-          {
-            'name': cookie.name,
+    def construct_response_cookies cookies
+      final_cookies = []
+      if ! cookies.nil?
+        for cookie in cookies
+          new_cookie = {
+            'name': cookie.name, 
             'value': cookie.value,
-            'path': cookie.path,
-            'domain': cookie.domain,
-            'expires': cookie.expires,
-            'httpOnly': cookie.httponly,
-            'secure': cookie.secure
           }
-        }
-      else
-        return []
+          if cookie.path && cookie.path != '/'
+            new_cookie['path'] = cookie.path
+          end
+          if cookie.domain
+            new_cookie['domain'] = cookie.domain
+          end
+          if cookie.expires
+            new_cookie['expires'] = cookie.expires.strftime("%Y-%m-%dT%H:%M:%S.%NZ")
+          end
+          if cookie.httponly
+            new_cookie['httpOnly'] = cookie.httponly
+          end
+          if cookie.secure
+            new_cookie['secure'] = cookie.secure
+          end
+          final_cookies << new_cookie
+        end
       end
+      return final_cookies.sort_by(&lambda{ |c| c[:name] })
     end
 
-    def self.construct_request_cookies cookies
-      if cookies.present?
+    def construct_request_cookies cookies
+      if cookies.nil?
+        return []
+      else
         return cookies.map{ |cookie|
           {
             'name': cookie[0],
             'value': cookie[1]
           }
+        }.sort_by(&lambda{ |c| c[:name] })
+      end
+    end
+
+    def construct_header_records headers
+      final_headers = []
+      for k, v in headers
+        if v.is_a? Array
+          for value in v
+            final_headers << {
+              "name": k,
+              "value": value
+            }
+          end
+        else
+          final_headers << {
+            "name": k,
+            "value": v
+          }
+        end
+      end
+      final_headers.sort_by(&lambda{ |h| h[:name] })
+    end
+
+    def construct_post_data request
+      content_type = request.headers['content-type']
+      if content_type.nil? || content_type.length == 0
+        content_type = "application/octet-stream"
+      end
+      if request.body.empty?
+        return nil
+      elsif (request.headers.include?('content-length')) && (!request.headers['content-length'].nil?) && (request.headers['content-length'].to_i > @api_config.max_capture_size)
+        return {
+          "mimeType": content_type,
+          "text": "--dropped--"
         }
       else
-        return []
+        return {
+          "mimeType": content_type,
+          "text": request.body
+        }
       end
     end
 
-    def self.construct_header_records headers
-      headers.map {|k, v| {
-        "name": k,
-        "value": v
-      } }.sort_by(&lambda{ |h| h[:name] })
+    def construct_response_content status, body, headers
+      content_type = headers['content-type']
+      if content_type.nil? || content_type.length == 0
+        content_type = "application/octet-stream"
+      end
+      if status == 304
+        return {
+          "mimeType": content_type,
+          "size": -1
+        }
+      elsif (headers.include?('content-length')) && (!headers['content-length'].nil?) && (headers['content-length'].to_i > @api_config.max_capture_size)
+        return {
+          "mimeType": content_type,
+          "text": "--dropped--",
+          "size": -1
+        }
+      elsif ! headers.include?('content-length')
+        return {
+          "mimeType": content_type,
+          "size": -1
+        }
+      else
+        return {
+          "mimeType": content_type,
+          "text": body,
+          "size": headers['content-length'].to_i
+        }
+      end
     end
 
-    def self.construct_post_data body, headers
-      content_type = headers['Content-Type']
-      if content_type.blank?
-        # TODO Mimetype detection - open question
-        content_type = "application.octet-stream"
+    def calculate_header_size headers
+      raw_headers = ''
+      for k, v in headers
+        if v.is_a? Array
+          for value in v
+            raw_headers += "#{k}: #{value}\r\n"
+          end
+        else
+          raw_headers += "#{k}: #{v}\r\n"
+        end
       end
-      return {
-        "mimeType": content_type,
-        "params": self.construct_empty_params,
-        "text": body
-      }
-    end
-    def self.construct_response_content body, headers
-      content_type = headers['Content-Type']
-      if content_type.blank?
-        # TODO Mimetype detection - open question
-        content_type = "application.octet-stream"
-      end
-      ## TODO handle streaming bodies?
-      return {
-        "mimeType": content_type,
-        "text": body,
-        "size": body.bytesize
-      }
+      raw_headers.bytesize
     end
 
-    def self.construct_request request
-      return {
+    def construct_request request
+      req = {
         "method": request.method,
-        "url": request.url.path, ## Should this be the full url?
+        "url": request.url,
         "httpVersion": request.transaction.protocol,
         "cookies": self.construct_request_cookies(request.cookies),
         "headers": self.construct_header_records(request.headers),
         "queryString": self.construct_query_records(request.query_params),
-        "postData":    self.construct_post_data(request.body, request.headers),
-        "headersSize": request.headers.to_s.bytesize, # TODO - how is this calculated?
-        "bodySize": request.body.bytesize, ## TODO - double check this too.
+        "headersSize": self.calculate_header_size(request.headers),
+        "bodySize": request.content_length.to_i,
       }
+      if ! self.construct_post_data(request).nil?
+        req["postData"] = self.construct_post_data(request)
+      end
+      req
     end
 
-    def self.construct_response response
-      ## TODO handle status not being an int?
-      return {
+    def construct_response response
+      res = {
         "status": response.status,
         "statusText":  Rack::Utils::HTTP_STATUS_CODES[response.status],
         "httpVersion":  response.transaction.protocol,
         "cookies":  self.construct_response_cookies(response.cookies),
         "headers":  self.construct_header_records(response.headers),
-        "content":  self.construct_response_content(response.body, response.headers),
-        "redirectURL":  response.headers.fetch('Location', ''),
-        "headersSize": response.headers.to_s.bytesize,
-        "bodySize":  response.body.bytesize, # TODO - bodysize vs content size. see go sdk
+        "content":  self.construct_response_content(response.status, response.body, response.headers),
+        "redirectURL":  response.headers.fetch('location', ''),
+        "headersSize": self.calculate_header_size(response.headers)
       }
+
+      if response.status == 304
+        res["bodySize"] = 0
+      elsif !response.headers.include?('content-length')
+        res["bodySize"] = -1
+      else
+        res["bodySize"] = response.body.bytesize
+      end
+      res
     end
 
-    def self.construct_timings
-      # These fiends are requiered, but we don't have broswer data
-      # with which to populate them. Hence the -1 static values
+    def construct_timings
       return {
         "send": -1,
         "wait": -1,
         "receive": -1,
       }
     end
-
-    def self.time_difference_ms end_time, start_time
-      #TODO put this somewhere more appropriate
-      ((end_time - start_time) * 1000.0).to_i
-    end
     
-    def self.construct_entries http_transaction
-      return [{
-        "startedDateTime": http_transaction.start_time.iso8601,
-        "time": self.time_difference_ms(Time.now, http_transaction.start_time),
+    def construct_entries http_transaction
+      entry = {
+        "startedDateTime": http_transaction.time_utils.start_time.strftime("%Y-%m-%dT%H:%M:%S.%NZ"),
+        "time": http_transaction.time_utils.elapsed_time,
         "request": self.construct_request(http_transaction.request),
         "response": self.construct_response(http_transaction.response),
-        "connection": http_transaction.request.url.port.to_s,
         "serverIPAddress": http_transaction.request.url.hostname,
         "cache": self.construct_empty_cache,
         "timings": self.construct_timings
-      }]
+      }
+      if !http_transaction.port.nil? && http_transaction.port != "80"
+        entry["connection"] = http_transaction.port
+      end
+      return [entry]
     end
 
-    def self.construct_har http_transaction
+    def construct_har http_transaction
       creator = construct_creator SpeakeasyRubySdk.to_s, SpeakeasyRubySdk::VERSION
       version = "1.2"
       comment = "request capture for #{http_transaction.request.url.to_s}"

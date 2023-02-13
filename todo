@@ -1,0 +1,30 @@
+## VALIDATE CONFIGURATION
+func mustValidateConfig(cfg Config) {
+	if cfg.APIKey == "" {
+		panic(ErrAPIKeyMissing)
+	}
+
+	if cfg.ApiID == "" {
+		panic(ErrApiIDMissing)
+	}
+
+	if len(cfg.ApiID) > maxIDSize {
+		panic(fmt.Errorf("ApiID is too long. Max length is %d: %w", maxIDSize, ErrApiIDMalformed))
+	}
+
+	if validCharsRegex.MatchString(cfg.ApiID) {
+		panic(fmt.Errorf("ApiID contains invalid characters %s: %w", validCharsRegexStr, ErrApiIDMalformed))
+	}
+
+	if cfg.VersionID == "" {
+		panic(ErrVersionIDMissing)
+	}
+
+	if len(cfg.VersionID) > maxIDSize {
+		panic(fmt.Errorf("VersionID is too long. Max length is %d: %w", maxIDSize, ErrVersionIDMalformed))
+	}
+
+	if validCharsRegex.MatchString(cfg.VersionID) {
+		panic(fmt.Errorf("VersionID contains invalid characters %s: %w", validCharsRegexStr, ErrVersionIDMalformed))
+	}
+}

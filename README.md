@@ -42,14 +42,14 @@ For a rails project, configure Speakeasy along with your other Middlewares in yo
       version_id: "YOUR API VERSION HERE"
     }
 
-    config.middleware.use SpeakeasyRubySdk::Middleware, config
+    config.middleware.insert_before 0, SpeakeasyRubySdk::Middleware, speakeasy_config
 ```
 
 Build and deploy your app and that's it. Your API is being tracked in the Speakeasy workspace you just created
 and will be visible on the dashboard next time you log in. Visit our [docs site](https://docs.speakeasyapi.dev/) to
 learn more.
 
-**warning** Some common middlewares, like `ActionDispatch::Cookies` may rewrite headers in order to provide additional functionality to your app.  In order to capture the original headers, be sure to `use` the Speakeasy middleware before `use`ing any such middlewares.  There is no harm in `use`ing the Speakeasy Ruby Sdk Middleware as your first middleware.
+**warning** Some common middlewares, like `ActionDispatch::Cookies` remove or rewrite headers in order to provide additional functionality to your app.  In order to capture the original headers, we recommend using the `insert_before` rather than `use`ing so that it will be inserted at the front of the middleware stack.  The middleware will function at any position in the middleware stack, but may not be able to report all information to Speakeasy.
 
 ### Tracking Multiple APIs configuration
 
@@ -67,14 +67,14 @@ The Speakeasy SDK is confirgurable using a config parameter. If you want to use 
       version_id: "YOUR API VERSION HERE"
     }
 
-    config.middleware.use SpeakeasyRubySdk::Middleware, speakeasy_config_1
-    config.middleware.use SpeakeasyRubySdk::Middleware, speakeasy_config_2
+    config.middleware.insert_before 0, SpeakeasyRubySdk::Middleware, speakeasy_config_1
+    config.middleware.insert_before 0, SpeakeasyRubySdk::Middleware, speakeasy_config_2
 ```
 
 This allows multiple instances of the SDK to be associated with different routers or routes within your service.
 
 ### Only Tracking Some Routes
-
+ 
 We recommend using the approach native to your framework to limit the application of the Speakeasy middleware.  In Rails, that approach is [Engines](https://guides.rubyonrails.org/engines.html), in Sinatra, middleware are `use`'d by controllers, so add the directive to a Controller which is the parent of those routes you wish to track.
 
 ## todo - add Sinatra examples
@@ -182,8 +182,7 @@ You are able to request an `EmbeddedAccessToken` from any location in your appli
 class MyController < ApplicationController
 
   def action
-    embed = SpeakeasyRubySdk::get_embedded_access_token('customer_id', '=', <some_customer_id>,
-      {api_key: '..snip..'})
+    access_token = SpeakeasyRubySdk::get_embedded_access_token 'customer_id', '=', <some_customer_id>, {api_key: '..snip..'}
   end
 end
 ```

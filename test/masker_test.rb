@@ -25,6 +25,7 @@ class MaskerTest < Test::Unit::TestCase
     assert_equal(SpeakeasyRubySdk::Masker::SIMPLE_MASK, masked_params[:carrot])
     assert_equal(query_params[:parsnip], masked_params[:parsnip]) # Should be unchanged
   end
+
   def test_mask_query_param_multiple_attrs
     masker_config = {
       routes: nil,

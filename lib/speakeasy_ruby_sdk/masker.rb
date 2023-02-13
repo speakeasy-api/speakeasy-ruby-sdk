@@ -42,9 +42,12 @@ module SpeakeasyRubySdk
         :response_body_string => [],
         :response_body_number => []
       }
+      # todo remove this dependency for other mask control
       @routes = config.routes
-      
-      config.masking.map {|mask| @masks[mask.type] << mask}
+
+      if config.masking
+        config.masking.map {|mask| @masks[mask.type] << mask}
+      end
     end
 
     def mask_value mask, attribute, path
@@ -77,6 +80,9 @@ module SpeakeasyRubySdk
       masked_dict = {}
       for key, value in hash_map
         masked_dict[key] = mask_pair masking_key, path, key, value
+        if value.is_a? Array
+          masked_dict[key] = value.map { |v| mask_pair masking_key, path, key, v }
+        end
       end
       masked_dict
     end
@@ -155,9 +161,6 @@ module SpeakeasyRubySdk
 
     end
 
-    def mask_response_body path, body
-      mask_body path, body
-    end
 
   end
 end
